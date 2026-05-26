@@ -1771,7 +1771,7 @@ export class GitHubRepoConnection
       message = message.substring(0, MAX_MESSAGE_LENGTH) + "...";
     }
 
-    return `<br><code>${shortSha}</code> ${message} = <b>${commit.author.name}</b>`;
+    return `<br><code>${shortSha}</code> ${message} - <b>${commit.author.name}</b>`;
   }
 
   private generateHtmlCommit(event: PushEvent) {
@@ -1783,7 +1783,7 @@ export class GitHubRepoConnection
       <b>${event.sender.login}</b>
       <br>
       <blockquote>
-      <a href=${urlToUse}>[${event.repository.name}:${branchName}] ${pluralCommitsCount}</a>
+      <a href="${urlToUse}">[${event.repository.name}:${branchName}] ${pluralCommitsCount}</a>
     `
 
     const MAX_VISIBLE_COMMITS = 8;
