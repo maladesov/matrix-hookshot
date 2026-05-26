@@ -1,7 +1,6 @@
 import {
   Appservice,
   Intent,
-  IRichReplyMetadata,
   RoomEvent,
   StateEvent,
 } from "matrix-bot-sdk";
@@ -38,6 +37,7 @@ import {
   WorkflowRunCompletedEvent,
   IssueCommentCreatedEvent,
   PushEvent,
+  Commit,
 } from "@octokit/webhooks-types";
 import {
   MatrixMessageContent,
@@ -101,10 +101,10 @@ export interface GitHubRepoConnectionOptions extends IConnectionState {
   includingLabels?: string[];
   excludingLabels?: string[];
   hotlinkIssues?:
-    | boolean
-    | {
-        prefix: string;
-      };
+  | boolean
+  | {
+    prefix: string;
+  };
   newIssue?: {
     labels: string[];
   };
@@ -411,8 +411,7 @@ export interface GitHubTargetFilter {
 @Connection
 export class GitHubRepoConnection
   extends CommandConnection<GitHubRepoConnectionState, ConnectionValidatedState>
-  implements IConnection
-{
+  implements IConnection {
   static validateState(
     state: unknown,
     isExistingState = false,
@@ -869,7 +868,7 @@ export class GitHubRepoConnection
       ] as unknown as GitHubIssueMessageBodyRepo;
       const pullRequestId = (
         reply.content[
-          "uk.half-shot.matrix-hookshot.github.pull_request"
+        "uk.half-shot.matrix-hookshot.github.pull_request"
         ] as unknown as GitHubIssueMessageBodyIssue
       )?.number;
       // Emojis can be multi-byte, so make sure we split properly
@@ -1763,6 +1762,55 @@ export class GitHubRepoConnection
     }
   }
 
+  private commitToHtml(commit: Commit) {
+    const shortSha = commit.id.substring(0, 7);
+    let message = commit.message.split("\n")[0];
+
+    const MAX_MESSAGE_LENGTH = 50;
+    if (message.length > MAX_MESSAGE_LENGTH) {
+      message = message.substring(0, MAX_MESSAGE_LENGTH) + "...";
+    }
+
+    return `<br><code>${shortSha}</code> ${message} = <b>${commit.author.name}</b>`;
+  }
+
+  private generateHtmlCommit(event: PushEvent) {
+    const urlToUse = event.commits.length === 1 ? event.commits[0].url : event.compare;
+    const pluralCommitsCount = `${event.commits.length} commit${event.commits.length === 1 ? "" : "s"}`;
+    const branchName = event.ref.replace("refs/heads/", "");
+
+    let html = `
+      <b>${event.sender.login}</b>
+      <br>
+      <blockquote>
+      <a href=${urlToUse}>[${event.repository.name}:${branchName}] ${pluralCommitsCount}</a>
+    `
+
+    const MAX_VISIBLE_COMMITS = 8;
+    const HALF_VISIBLE_COMMITS = MAX_VISIBLE_COMMITS / 2;
+
+    if (event.commits.length > MAX_VISIBLE_COMMITS) {
+      const firstCommits = event.commits.slice(0, HALF_VISIBLE_COMMITS);
+      const lastCommits = event.commits.slice(-HALF_VISIBLE_COMMITS);
+
+      for (const commit of firstCommits) {
+        html += this.commitToHtml(commit);
+      }
+
+      html += `<br><i>... ${event.commits.length - MAX_VISIBLE_COMMITS} more commits ...</i>`;
+
+      for (const commit of lastCommits) {
+        html += this.commitToHtml(commit);
+      }
+    } else {
+      for (const commit of event.commits) {
+        html += this.commitToHtml(commit);
+      }
+    }
+
+    return html + '</blockquote>';
+  }
+
   public async onPush(event: PushEvent) {
     if (this.hookFilter.shouldSkip("push")) {
       return;
@@ -1780,7 +1828,7 @@ export class GitHubRepoConnection
       },
       msgtype: "m.notice",
       body: content,
-      formatted_body: md.render(content),
+      formatted_body: this.generateHtmlCommit(event),
       format: "org.matrix.custom.html",
     };
     await this.intent.sendEvent(this.roomId, eventContent);
