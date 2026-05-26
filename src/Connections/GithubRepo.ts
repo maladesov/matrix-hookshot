@@ -1774,17 +1774,8 @@ export class GitHubRepoConnection
     return `<br><code>${shortSha}</code> ${message} - <b>${commit.author.name}</b>`;
   }
 
-  private generateHtmlCommit(event: PushEvent) {
-    const urlToUse = event.commits.length === 1 ? event.commits[0].url : event.compare;
-    const pluralCommitsCount = `${event.commits.length} commit${event.commits.length === 1 ? "" : "s"}`;
-    const branchName = event.ref.replace("refs/heads/", "");
-
-    let html = `
-      <b>${event.sender.login}</b>
-      <br>
-      <blockquote>
-      <a href="${urlToUse}">[${event.repository.name}:${branchName}] ${pluralCommitsCount}</a>
-    `
+  private renderCommits(event: PushEvent) {
+    let rendered = '';
 
     const MAX_VISIBLE_COMMITS = 8;
     const HALF_VISIBLE_COMMITS = MAX_VISIBLE_COMMITS / 2;
@@ -1794,18 +1785,57 @@ export class GitHubRepoConnection
       const lastCommits = event.commits.slice(-HALF_VISIBLE_COMMITS);
 
       for (const commit of firstCommits) {
-        html += this.commitToHtml(commit);
+        rendered += this.commitToHtml(commit);
       }
 
-      html += `<br><i>... ${event.commits.length - MAX_VISIBLE_COMMITS} more commits ...</i>`;
+      rendered += `<br><i>... ${event.commits.length - MAX_VISIBLE_COMMITS} more commits ...</i>`;
 
       for (const commit of lastCommits) {
-        html += this.commitToHtml(commit);
+        rendered += this.commitToHtml(commit);
       }
     } else {
       for (const commit of event.commits) {
-        html += this.commitToHtml(commit);
+        rendered += this.commitToHtml(commit);
       }
+    }
+
+    return rendered;
+  }
+
+  private renderAction(event: PushEvent) {
+    let pluralActionStr = `${event.commits.length} commit${event.commits.length === 1 ? "" : "s"}`;
+
+    if (event.created) {
+      pluralActionStr = "created new branch";
+    } else if (event.deleted) {
+      pluralActionStr = "deleted branch";
+    } else if (event.commits.length === 0) {
+      const {head_commit: headCommit} = event;
+
+      if (headCommit) {
+        pluralActionStr = `force pushed to ${headCommit.id.substring(0, 7)}`;
+      } else {
+        pluralActionStr = "force pushed with no HEAD";
+      }
+    }
+
+    return pluralActionStr;
+  }
+
+  private generateHtmlCommit(event: PushEvent) {
+    const urlToUse = event.commits.length === 1 ? event.commits[0].url : event.compare;
+    const pluralActionStr = this.renderAction(event);
+    const branchName = event.ref.replace("refs/heads/", "");
+
+    let html = `
+      <b>${event.sender.login}</b>
+      <br>
+      <blockquote>
+      <a href="${urlToUse}">[${event.repository.name}:${branchName}] ${pluralActionStr}</a>
+    `;
+
+    if (event.commits.length > 0) {
+      html += this.renderCommits(event);
     }
 
     return html + '</blockquote>';
